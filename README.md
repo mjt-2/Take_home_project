@@ -8,8 +8,8 @@ Give it expense records (Excel, CSV, or JSON) and it tells you, for each one:
 - **reason** - a plain-English explanation
 - **policy** - which rule made the call
 
-No database, no server - just a CLI script and an optional local Streamlit
-app, both driven by the same policy engine.
+No database, no cloud hosting required - just a CLI script and an optional
+local Streamlit app, both driven by the same policy engine.
 
 ## Streamlit app
 
@@ -102,9 +102,10 @@ python run_expenses.py --workbook other_pack.xlsx --sheet "SAMPLE DATA"
 Evaluation runs in two passes, not one top-to-bottom pass through P1-P8:
 
 1. **Gates** - P1 (required fields), P2 (receipt threshold), P7's receipt/approval
-   check, and P8 (currency) all must pass first, in that order. None of them
-   look at money, and any one of them can stop the record before a cent is
-   calculated.
+   check, and P8 (currency) all must pass first, in that order. The gates
+   validate eligibility before calculating reimbursement - P1 and P2 do look
+   at the claimed amount, but only to check it's present and non-negative,
+   or over the receipt threshold, not to compute a payout.
 2. **Caps** - only once every gate has cleared does the one category cap that
    applies (P3-P7) compute the payout.
 
