@@ -126,7 +126,47 @@ def to_decimal(v):
             return None, False
     if not d.is_finite():
         return None, False
-    return d.quantize(CENTS, rounding=ROUND_HALF_UP), True
+    try:
+        return d.quantize(CENTS, rounding=ROUND_HALF_UP), True
+    except InvalidOperation:
+        # Absurdly large magnitudes (e.g. "1e100") parse fine but overflow
+        # the default 28-digit context once quantized to cents.
+        return None, False
+
+
+def to_count(v):
+    """Parse a value into a non-negative whole-number Decimal (for counts
+    like nights).
+
+    Integrality and sign are checked on the raw parsed value, before any
+    cents-rounding happens - quantizing first (as to_decimal does) would
+    round something like 1.001 to 1.00, which is indistinguishable from a
+    genuine whole number by the time a fractional check could see it.
+
+    Returns (value, ok) with the same contract as to_decimal().
+    """
+    if v is None:
+        return None, True
+    if isinstance(v, bool):
+        return None, False
+    if isinstance(v, Decimal):
+        d = v
+    else:
+        s = str(v).strip()
+        if s == "":
+            return None, True
+        try:
+            d = Decimal(s)
+        except InvalidOperation:
+            return None, False
+    if not d.is_finite():
+        return None, False
+    if d < 0 or d != d.to_integral_value():
+        return None, False
+    try:
+        return d.quantize(CENTS, rounding=ROUND_HALF_UP), True
+    except InvalidOperation:
+        return None, False
 
 
 def to_bool(v):
@@ -184,6 +224,8 @@ def derive(raw: dict) -> dict:
     unclear = set(exp.get("_unclear") or [])
 
     for f in NUMERIC_FIELDS:
+        if f == "nights":
+            continue  # a whole-number count, parsed separately below
         value, ok = to_decimal(exp.get(f))
         if not ok:
             unclear.add(f)
@@ -196,10 +238,12 @@ def derive(raw: dict) -> dict:
     # nights is a count, not an arbitrary amount: negative or fractional
     # nights can't feed the nightly cap, and used to either go negative or
     # (for math.inf) crash the int() conversion this replaces.
-    nights = exp.get("nights")
-    if nights is not None and (nights != nights.to_integral_value() or nights < 0):
+    nights_value, nights_ok = to_count(exp.get("nights"))
+    if not nights_ok:
         unclear.add("nights")
         exp["nights"] = ZERO
+    else:
+        exp["nights"] = nights_value if nights_value is not None else ZERO
 
     for f in BOOL_FIELDS:
         value, ok = to_bool(exp.get(f))

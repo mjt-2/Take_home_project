@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import unittest
 
 try:
@@ -9,7 +10,10 @@ except ImportError:
     STREAMLIT_AVAILABLE = False
 
 from policy_engine import evaluate_expense
-from run_expenses import main, normalize
+from run_expenses import main, normalize, read_workbook
+
+WORKBOOK_PATH = os.path.join(os.path.dirname(__file__),
+                              "Graduate_Expense_Challenge_Candidate_Pack.xlsx")
 
 
 BASE_RECORD = {
@@ -105,6 +109,25 @@ class AppConsistencyTests(unittest.TestCase):
                 script_result[0]["reimbursable_amount"],
                 script_result[0]["policy_id"],
             ),
+        )
+
+    def test_uploaded_candidate_pack_matches_cli_reader(self):
+        with open(WORKBOOK_PATH, "rb") as fh:
+            data = fh.read()
+        uploaded = io.BytesIO(data)
+        uploaded.name = WORKBOOK_PATH
+
+        uploaded_records = parse_uploaded_records(uploaded, sheet_name="SAMPLE DATA")
+        cli_records = read_workbook(WORKBOOK_PATH, sheet="SAMPLE DATA")
+
+        self.assertEqual(len(uploaded_records), 5)
+        self.assertEqual(
+            [r["id"] for r in uploaded_records],
+            [r["id"] for r in cli_records],
+        )
+        self.assertEqual(
+            [_expected_result(r) for r in uploaded_records],
+            [_expected_result(r) for r in cli_records],
         )
 
 

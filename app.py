@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from policy_engine import evaluate_expense
-from run_expenses import normalize
+from run_expenses import normalize, read_excel_sheet
 
 CATEGORIES = ["Meal", "Client Meal", "Hotel", "Ground Transport", "Airfare"]
 CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD", "Other"]
@@ -73,11 +73,7 @@ def parse_uploaded_records(file_obj, sheet_name: str | None = None) -> list[dict
         chosen_sheet = sheet_name or sheets[0]
         if chosen_sheet not in sheets:
             raise ValueError(f"Sheet '{chosen_sheet}' was not found. Available sheets: {', '.join(sheets)}")
-        df = pd.read_excel(excel_file, sheet_name=chosen_sheet)
-        if df.empty:
-            return []
-        rows = df.where(pd.notna(df), None).to_dict("records")
-        return [{str(k): v for k, v in row.items()} for row in rows]
+        return read_excel_sheet(excel_file, chosen_sheet)
 
     raise ValueError(f"Unsupported file type: {file_obj.name}")
 

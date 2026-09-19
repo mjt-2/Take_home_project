@@ -8,7 +8,8 @@ Give it expense records (Excel, CSV, or JSON) and it tells you, for each one:
 - **reason** - a plain-English explanation
 - **policy** - which rule made the call
 
-No database, no server, no UI - just a script you run from a terminal.
+No database, no server - just a CLI script and an optional local Streamlit
+app, both driven by the same policy engine.
 
 ## Streamlit app
 
@@ -63,9 +64,18 @@ python -m unittest discover -v
 ## Using your own data
 
 ```bash
-# one record on the command line
-python run_expenses.py --only-new --row '{"id":"E06","merchant":"Berlin Taxi","category":"Ground Transport","currency":"EUR","claimed_amount":45,"receipt_present":true}'
+# one record on the command line (bash / PowerShell)
+python run_expenses.py --only-new --row '{"id":"E06","merchant":"Berlin Taxi","date":"2026-09-20","category":"Ground Transport","currency":"EUR","claimed_amount":45,"receipt_present":true}'
+```
 
+In `cmd.exe`, single quotes aren't a quoting character, so wrap the JSON in
+double quotes instead and double up the ones inside it:
+
+```cmd
+python run_expenses.py --only-new --row "{""id"":""E06"",""merchant"":""Berlin Taxi"",""date"":""2026-09-20"",""category"":""Ground Transport"",""currency"":""EUR"",""claimed_amount"":45,""receipt_present"":true}"
+```
+
+```bash
 # a JSON file
 python run_expenses.py --only-new --json new_rows.json
 
@@ -89,9 +99,29 @@ python run_expenses.py --workbook other_pack.xlsx --sheet "SAMPLE DATA"
 | P7 | Airfare | needs receipt and manager approval to be fully paid |
 | P8 | Every record | only USD is auto-processed; other currencies go to a human |
 
-Rules are checked in this order, top to bottom - the first one that applies decides the outcome.
+Evaluation runs in two passes, not one top-to-bottom pass through P1-P8:
 
-There's also an internal **P0** check: if a field couldn't be read or parsed cleanly, the record goes to a human for `REVIEW` instead of guessing.
+1. **Gates** - P1 (required fields), P2 (receipt threshold), P7's receipt/approval
+   check, and P8 (currency) all must pass first, in that order. None of them
+   look at money, and any one of them can stop the record before a cent is
+   calculated.
+2. **Caps** - only once every gate has cleared does the one category cap that
+   applies (P3-P7) compute the payout.
+
+So a gate later in the table can still block a record a gate earlier in the
+table already let through - e.g. an airfare claim with its receipt and
+approval both present is still sent to REVIEW by P8 if it was filed in a
+non-USD currency.
+
+There's also an internal **P0** check, which runs before every other gate: if
+a field couldn't be read or parsed cleanly, the record goes to a human for
+`REVIEW` instead of guessing.
+
+**Why E03 is REVIEW:** E03 is a Ground Transport claim with base fare $62.00 +
+tolls $8.50 = $70.50 itemized, but `claimed_amount` is $84.60 - $14.10 more
+than the fields on the record add up to. Rather than assume the gap is an
+untracked tip, P6 sends it to a human instead of guessing (same rule as P3's
+meal reconciliation).
 
 ## Project layout
 
@@ -114,3 +144,10 @@ Start with `policy_engine.py` (the rules) and `run_expenses.py` (everything else
   guarantees nothing gets paid out negative or over the claim.
 - Extra, unrecognized columns in your input are silently ignored rather
   than flagged - only the columns the rules actually look at matter.
+- `nights` must be a non-negative whole number - a value like `1.001` is
+  flagged for review rather than silently rounded to `1`, since rounding
+  it into a money field first would hide the fraction from the whole-number
+  check.
+- Any numeric field can be flagged for review rather than crash the
+  program, no matter how extreme - an amount like `1e100` is treated as
+  unparseable money, not a valid claim.

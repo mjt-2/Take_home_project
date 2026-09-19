@@ -402,6 +402,24 @@ class TestInvalidNumericInputs(AssertsMixin, unittest.TestCase):
                                    claimed_amount=float("nan")))
         self.assertNotEqual(got["decision"], "APPROVE")
         self.assertNotEqual(got["decision"], "PARTIAL")
+
+    def test_near_whole_number_nights_is_still_reviewed(self):
+        # 1.001 quantizes to 1.00 at cents precision - the fractional check
+        # must run on the raw value, before that rounding happens, or a
+        # near-integer fraction like this one becomes indistinguishable
+        # from a genuine whole number and slips through as nights=1.
+        got = evaluate_expense(rec(id="B11", category="Hotel", nights=1.001,
+                                   room_charge=190.0, claimed_amount=190.0,
+                                   manager_approval=True))
+        self.assertEqual(got["decision"], "REVIEW")
+
+    def test_extreme_claimed_amount_is_reviewed_not_a_crash(self):
+        # Decimal("1e100") parses fine but overflows the default 28-digit
+        # context once quantized to cents; that must be caught, not left to
+        # propagate as an uncaught InvalidOperation.
+        got = evaluate_expense(rec(id="B12", subtotal_or_base=22.0,
+                                   claimed_amount="1e100"))
+        self.assertEqual(got["decision"], "REVIEW")
         self.assertEqual(got["reimbursable_amount"], 0.0)
 
     def test_infinite_claimed_amount_is_not_approved(self):

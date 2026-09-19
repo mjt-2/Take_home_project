@@ -63,6 +63,38 @@ def normalize(row: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Readers - each one only has to produce raw dicts
 # ---------------------------------------------------------------------------
+def read_excel_sheet(xl, sheet):
+    """Read one worksheet of an already-open pandas ExcelFile into raw dicts.
+
+    The workbook has preamble rows above the real header and the count of
+    them is not guaranteed, so this finds the row that contains an "id"
+    column instead of hardcoding an offset - and checks every column, not
+    just the first, so the header is found regardless of column order.
+    Shared by the CLI's read_workbook() and the Streamlit app's upload path
+    so both parse a workbook with this shape the same way.
+    """
+    import pandas as pd
+
+    probe = pd.read_excel(xl, sheet_name=sheet, header=None)
+    header_row = None
+    for i in range(len(probe)):
+        cells = [str(v).strip().lower() for v in probe.iloc[i]]
+        if "id" in cells:
+            header_row = i
+            break
+    if header_row is None:
+        raise ValueError(
+            f"no header row with an 'id' column found in sheet '{sheet}'"
+        )
+
+    df = pd.read_excel(xl, sheet_name=sheet, header=header_row)
+    df = df.dropna(how="all")  # completely blank rows only - a missing
+                                # id is still a row and must not be
+                                # silently dropped
+    return [{k: (None if pd.isna(v) else v) for k, v in r.items()}
+            for r in df.to_dict("records")]
+
+
 def read_workbook(path, sheet="SAMPLE DATA"):
     import pandas as pd
 
@@ -80,29 +112,7 @@ def read_workbook(path, sheet="SAMPLE DATA"):
                 f"Available sheets: {', '.join(xl.sheet_names)}. "
                 f"Pass --sheet to pick one of them."
             )
-
-        # The tab has preamble rows above the real header and the count of
-        # them is not guaranteed, so find the row that contains an "id"
-        # column instead of hardcoding an offset - and check every column,
-        # not just the first, so the header is found regardless of order.
-        probe = pd.read_excel(xl, sheet_name=sheet, header=None)
-        header_row = None
-        for i in range(len(probe)):
-            cells = [str(v).strip().lower() for v in probe.iloc[i]]
-            if "id" in cells:
-                header_row = i
-                break
-        if header_row is None:
-            raise ValueError(
-                f"no header row with an 'id' column found in sheet '{sheet}' of '{path}'"
-            )
-
-        df = pd.read_excel(xl, sheet_name=sheet, header=header_row)
-        df = df.dropna(how="all")  # completely blank rows only - a missing
-                                    # id is still a row and must not be
-                                    # silently dropped
-        return [{k: (None if pd.isna(v) else v) for k, v in r.items()}
-                for r in df.to_dict("records")]
+        return read_excel_sheet(xl, sheet)
 
 
 def read_csv(path):
